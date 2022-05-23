@@ -703,6 +703,11 @@ public class ContactsManager extends ReactContextBaseJavaModule implements Activ
                 .withValue(Organization.DEPARTMENT, department);
         ops.add(op.build());
 
+        op = ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+                .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, 0)
+                .withValue(ContactsContract.RawContacts.AGGREGATION_MODE, ContactsContract.RawContacts.AGGREGATION_MODE_DISABLED);
+        ops.add(op.build());
+
         //TODO not sure where to allow yields
         op.withYieldAllowed(true);
 
@@ -960,6 +965,11 @@ public class ContactsManager extends ReactContextBaseJavaModule implements Activ
                 .withValue(Organization.COMPANY, company)
                 .withValue(Organization.TITLE, jobTitle)
                 .withValue(Organization.DEPARTMENT, department);
+        ops.add(op.build());
+
+        op = ContentProviderOperation.newUpdate(ContactsContract.Data.CONTENT_URI)
+                .withSelection(ContactsContract.Data.CONTACT_ID + "=?", new String[]{String.valueOf(recordID)})
+                .withValue(ContactsContract.RawContacts.AGGREGATION_MODE, ContactsContract.RawContacts.AGGREGATION_MODE_DISABLED);
         ops.add(op.build());
 
         op.withYieldAllowed(true);
