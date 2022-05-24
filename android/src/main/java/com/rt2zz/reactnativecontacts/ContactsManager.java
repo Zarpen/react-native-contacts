@@ -703,10 +703,46 @@ public class ContactsManager extends ReactContextBaseJavaModule implements Activ
                 .withValue(Organization.DEPARTMENT, department);
         ops.add(op.build());
 
-        op = ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+        try {
+            String[] GROUP_PROJECTION = new String[] { ContactsContract.Groups._ID, ContactsContract.Groups.TITLE };
+            String customGroupName = "RRHH";
+
+            String groupID = null;
+            Cursor getGroupID_Cursor = null;
+            getGroupID_Cursor = this.getContentResolver().query(ContactsContract.Groups.CONTENT_URI,  GROUP_PROJECTION, ContactsContract.Groups.TITLE+ "=?", new String[]{customGroupName}, null);
+
+            Boolean exist = false;
+            if(getGroupID_Cursor != null){
+                getGroupID_Cursor.moveToFirst();
+                groupID = (getGroupID_Cursor.getString(getGroupID_Cursor.getColumnIndex("_id")));
+                if(groupID != null){
+                    exist = true;
+                }
+            }
+
+            if(!exist){
+                ContentValues groupValues = null;
+                ContentResolver cr = this.getContentResolver();
+                groupValues = new ContentValues();
+                groupValues.put(ContactsContract.Groups.TITLE, customGroupName);
+                groupValues.put(ContactsContract.Groups.SHOULD_SYNC,true);
+                cr.insert(ContactsContract.Groups.CONTENT_URI, groupValues);
+
+                getGroupID_Cursor = this.getContentResolver().query(ContactsContract.Groups.CONTENT_URI,  GROUP_PROJECTION, ContactsContract.Groups.TITLE+ "=?", new String[]{customGroupName}, null);
+                getGroupID_Cursor.moveToFirst();
+                groupID = (getGroupID_Cursor.getString(getGroupID_Cursor.getColumnIndex("_id")));
+            }
+
+            op = ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
                 .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, 0)
-                .withValue(ContactsContract.RawContacts.AGGREGATION_MODE, ContactsContract.RawContacts.AGGREGATION_MODE_DISABLED);
-        ops.add(op.build());
+                .withValue(ContactsContract.CommonDataKinds.GroupMembership.MIMETYPE,
+                    ContactsContract.CommonDataKinds.GroupMembership.CONTENT_ITEM_TYPE)
+                .withValue(ContactsContract.CommonDataKinds.GroupMembership.GROUP_ROW_ID, groupID);
+            ops.add(op.build());
+        }
+        catch(Exception e){
+            Log.d("Cannot assign contact to group on creation:","" +e.getMessage());
+        }
 
         //TODO not sure where to allow yields
         op.withYieldAllowed(true);
@@ -967,10 +1003,46 @@ public class ContactsManager extends ReactContextBaseJavaModule implements Activ
                 .withValue(Organization.DEPARTMENT, department);
         ops.add(op.build());
 
-        op = ContentProviderOperation.newUpdate(ContactsContract.Data.CONTENT_URI)
-                .withSelection(ContactsContract.Data.CONTACT_ID + "=?", new String[]{String.valueOf(recordID)})
-                .withValue(ContactsContract.RawContacts.AGGREGATION_MODE, ContactsContract.RawContacts.AGGREGATION_MODE_DISABLED);
-        ops.add(op.build());
+        try {
+            String[] GROUP_PROJECTION = new String[] { ContactsContract.Groups._ID, ContactsContract.Groups.TITLE };
+            String customGroupName = "RRHH";
+
+            String groupID = null;
+            Cursor getGroupID_Cursor = null;
+            getGroupID_Cursor = this.getContentResolver().query(ContactsContract.Groups.CONTENT_URI,  GROUP_PROJECTION, ContactsContract.Groups.TITLE+ "=?", new String[]{customGroupName}, null);
+
+            Boolean exist = false;
+            if(getGroupID_Cursor != null){
+                getGroupID_Cursor.moveToFirst();
+                groupID = (getGroupID_Cursor.getString(getGroupID_Cursor.getColumnIndex("_id")));
+                if(groupID != null){
+                    exist = true;
+                }
+            }
+
+            if(!exist){
+                ContentValues groupValues = null;
+                ContentResolver cr = this.getContentResolver();
+                groupValues = new ContentValues();
+                groupValues.put(ContactsContract.Groups.TITLE, customGroupName);
+                groupValues.put(ContactsContract.Groups.SHOULD_SYNC,true);
+                cr.insert(ContactsContract.Groups.CONTENT_URI, groupValues);
+
+                getGroupID_Cursor = this.getContentResolver().query(ContactsContract.Groups.CONTENT_URI,  GROUP_PROJECTION, ContactsContract.Groups.TITLE+ "=?", new String[]{customGroupName}, null);
+                getGroupID_Cursor.moveToFirst();
+                groupID = (getGroupID_Cursor.getString(getGroupID_Cursor.getColumnIndex("_id")));
+            }
+            
+            op = ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+                .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, 0)
+                .withValue(ContactsContract.CommonDataKinds.GroupMembership.MIMETYPE,
+                    ContactsContract.CommonDataKinds.GroupMembership.CONTENT_ITEM_TYPE)
+                .withValue(ContactsContract.CommonDataKinds.GroupMembership.GROUP_ROW_ID, groupID);
+            ops.add(op.build());
+        }
+        catch(Exception e){
+            Log.d("Cannot assign contact to group on creation:","" +e.getMessage());
+        }
 
         op.withYieldAllowed(true);
 
