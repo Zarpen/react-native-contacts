@@ -848,9 +848,6 @@ public class ContactsManager extends ReactContextBaseJavaModule implements Activ
      */
     @ReactMethod
     public void updateContact(ReadableMap contact, Promise promise) {
-
-        Log.d("RRHH","Updating contact");
-
         String recordID = contact.hasKey("recordID") ? contact.getString("recordID") : null;
         String rawContactId = contact.hasKey("rawContactId") ? contact.getString("rawContactId") : null;
 
@@ -858,8 +855,6 @@ public class ContactsManager extends ReactContextBaseJavaModule implements Activ
             promise.reject("Invalid recordId or rawContactId");
             return;
         }
-
-        Log.d("RRHH","Updating contact " + rawContactId + " " + recordID);
 
         String givenName = contact.hasKey("givenName") ? contact.getString("givenName") : null;
         String middleName = contact.hasKey("middleName") ? contact.getString("middleName") : null;
