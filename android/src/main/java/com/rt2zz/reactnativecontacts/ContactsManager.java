@@ -1,5 +1,7 @@
 package com.rt2zz.reactnativecontacts;
 
+import android.accounts.Account;
+import android.accounts.AccountManager;
 import android.app.Activity;
 import android.content.ContentProviderOperation;
 import android.content.ContentProviderResult;
@@ -10,6 +12,7 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.res.AssetManager;
 import android.content.ContentUris;
+import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.Manifest;
@@ -43,6 +46,10 @@ import java.io.OutputStream;
 import java.util.ArrayList;
 import java.io.InputStream;
 import java.util.Hashtable;
+import java.util.LinkedList;
+import java.util.List;
+
+import android.util.Log;
 
 public class ContactsManager extends ReactContextBaseJavaModule implements ActivityEventListener {
 
@@ -308,18 +315,15 @@ public class ContactsManager extends ReactContextBaseJavaModule implements Activ
         ReadableArray phoneNumbers = contact.hasKey("phoneNumbers") ? contact.getArray("phoneNumbers") : null;
         int numOfPhones = 0;
         String[] phones = null;
-        String[] phonesLabels = null;
-        Integer[] phonesLabelsTypes = null;
+        Integer[] phonesLabels = null;
         if (phoneNumbers != null) {
             numOfPhones = phoneNumbers.size();
             phones = new String[numOfPhones];
-            phonesLabels = new String[numOfPhones];
-            phonesLabelsTypes = new Integer[numOfPhones];
+            phonesLabels = new Integer[numOfPhones];
             for (int i = 0; i < numOfPhones; i++) {
                 phones[i] = phoneNumbers.getMap(i).getString("number");
                 String label = phoneNumbers.getMap(i).getString("label");
-                phonesLabels[i] = label;
-                phonesLabelsTypes[i] = mapStringToPhoneType(label);
+                phonesLabels[i] = mapStringToPhoneType(label);
             }
         }
 
@@ -435,10 +439,8 @@ public class ContactsManager extends ReactContextBaseJavaModule implements Activ
         for (int i = 0; i < numOfPhones; i++) {
             ContentValues phone = new ContentValues();
             phone.put(ContactsContract.Data.MIMETYPE, CommonDataKinds.Phone.CONTENT_ITEM_TYPE);
-            phone.put(CommonDataKinds.Phone.TYPE, phonesLabelsTypes[i]);
-            phone.put(CommonDataKinds.Phone.LABEL, phonesLabels[i]);
+            phone.put(CommonDataKinds.Phone.TYPE, phonesLabels[i]);
             phone.put(CommonDataKinds.Phone.NUMBER, phones[i]);
-
             contactData.add(phone);
         }
 
@@ -520,28 +522,6 @@ public class ContactsManager extends ReactContextBaseJavaModule implements Activ
         }
     }
 
- /*
-     * View contact in native app
-     */
-    @ReactMethod
-    public void viewExistingContact(ReadableMap contact, Promise promise) {
-
-        String recordID = contact.hasKey("recordID") ? contact.getString("recordID") : null;
-
-        try {
-            Uri uri = Uri.withAppendedPath(ContactsContract.Contacts.CONTENT_URI, recordID);
-            Intent intent = new Intent(Intent.ACTION_VIEW);
-            intent.setDataAndType(uri, ContactsContract.Contacts.CONTENT_ITEM_TYPE);
-            intent.putExtra("finishActivityOnSaveCompleted", true);
-
-            updateContactPromise = promise;
-            getReactApplicationContext().startActivityForResult(intent, REQUEST_OPEN_EXISTING_CONTACT, Bundle.EMPTY);
-
-        } catch (Exception e) {
-            promise.reject(e.toString());
-        }
-    }
-    
     /*
      * Edit contact in native app
      */
@@ -588,6 +568,48 @@ public class ContactsManager extends ReactContextBaseJavaModule implements Activ
         } catch (Exception e) {
             promise.reject(e.toString());
         }
+    }
+
+    /*
+     * Get or create default sync group
+     */
+    public String createGetDefaultGroup() {
+        String result = null;
+
+        Context ctx = getReactApplicationContext();
+        try {
+            ContentResolver cr = ctx.getContentResolver();
+
+            String[] GROUP_PROJECTION = new String[] { ContactsContract.Groups._ID,     ContactsContract.Groups.TITLE };
+
+            String groupID = null;
+            Cursor getGroupID_Cursor = null;
+            getGroupID_Cursor = cr.query(ContactsContract.Groups.CONTENT_URI,  GROUP_PROJECTION, ContactsContract.Groups.TITLE+ "='My Contacts'", new String[]{}, null);
+            getGroupID_Cursor.moveToFirst();
+            groupID = (getGroupID_Cursor.getString(getGroupID_Cursor.getColumnIndex("_id")));
+
+            if(groupID != null){
+                result = groupID;
+            }else{
+                ContentValues groupValues = null;
+                groupValues = new ContentValues();
+                groupValues.put(ContactsContract.Groups.TITLE, "My Contacts");
+                groupValues.put(ContactsContract.Groups.SHOULD_SYNC,true);
+                cr.insert(ContactsContract.Groups.CONTENT_URI, groupValues);
+
+                getGroupID_Cursor = cr.query(ContactsContract.Groups.CONTENT_URI,  GROUP_PROJECTION, ContactsContract.Groups.TITLE+ "='My Contacts'", new String[]{}, null);
+                getGroupID_Cursor.moveToFirst();
+                groupID = (getGroupID_Cursor.getString(getGroupID_Cursor.getColumnIndex("_id")));
+
+                if(groupID != null){
+                    result = groupID;
+                }
+            }
+        } catch (Exception e) {
+            Log.d("Error in contact group check:",""+e.getMessage());
+        }
+
+        return result;
     }
 
     /*
@@ -673,9 +695,12 @@ public class ContactsManager extends ReactContextBaseJavaModule implements Activ
 
         ArrayList<ContentProviderOperation> ops = new ArrayList<ContentProviderOperation>();
 
+        String defaultAccountType = contact.hasKey("defaultAccountType") ? contact.getString("defaultAccountType") : null;
+        String defaultAccountName = contact.hasKey("defaultAccountName") ? contact.getString("defaultAccountName") : null;
+
         ContentProviderOperation.Builder op = ContentProviderOperation.newInsert(RawContacts.CONTENT_URI)
-                .withValue(RawContacts.ACCOUNT_TYPE, null)
-                .withValue(RawContacts.ACCOUNT_NAME, null);
+                .withValue(RawContacts.ACCOUNT_TYPE, defaultAccountType)
+                .withValue(RawContacts.ACCOUNT_NAME, defaultAccountName);
         ops.add(op.build());
 
         op = ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
@@ -702,47 +727,6 @@ public class ContactsManager extends ReactContextBaseJavaModule implements Activ
                 .withValue(Organization.TITLE, jobTitle)
                 .withValue(Organization.DEPARTMENT, department);
         ops.add(op.build());
-
-        try {
-            String[] GROUP_PROJECTION = new String[] { ContactsContract.Groups._ID, ContactsContract.Groups.TITLE };
-            String customGroupName = "RRHH";
-
-            String groupID = null;
-            Cursor getGroupID_Cursor = null;
-            getGroupID_Cursor = this.getContentResolver().query(ContactsContract.Groups.CONTENT_URI,  GROUP_PROJECTION, ContactsContract.Groups.TITLE+ "=?", new String[]{customGroupName}, null);
-
-            Boolean exist = false;
-            if(getGroupID_Cursor != null){
-                getGroupID_Cursor.moveToFirst();
-                groupID = (getGroupID_Cursor.getString(getGroupID_Cursor.getColumnIndex("_id")));
-                if(groupID != null){
-                    exist = true;
-                }
-            }
-
-            if(!exist){
-                ContentValues groupValues = null;
-                ContentResolver cr = this.getContentResolver();
-                groupValues = new ContentValues();
-                groupValues.put(ContactsContract.Groups.TITLE, customGroupName);
-                groupValues.put(ContactsContract.Groups.SHOULD_SYNC,true);
-                cr.insert(ContactsContract.Groups.CONTENT_URI, groupValues);
-
-                getGroupID_Cursor = this.getContentResolver().query(ContactsContract.Groups.CONTENT_URI,  GROUP_PROJECTION, ContactsContract.Groups.TITLE+ "=?", new String[]{customGroupName}, null);
-                getGroupID_Cursor.moveToFirst();
-                groupID = (getGroupID_Cursor.getString(getGroupID_Cursor.getColumnIndex("_id")));
-            }
-
-            op = ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
-                .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, 0)
-                .withValue(ContactsContract.CommonDataKinds.GroupMembership.MIMETYPE,
-                    ContactsContract.CommonDataKinds.GroupMembership.CONTENT_ITEM_TYPE)
-                .withValue(ContactsContract.CommonDataKinds.GroupMembership.GROUP_ROW_ID, groupID);
-            ops.add(op.build());
-        }
-        catch(Exception e){
-            Log.d("Cannot assign contact to group on creation:","" +e.getMessage());
-        }
 
         //TODO not sure where to allow yields
         op.withYieldAllowed(true);
@@ -819,6 +803,21 @@ public class ContactsManager extends ReactContextBaseJavaModule implements Activ
             ops.add(op.build());
         }
 
+        try{
+            String defaultGroupId = createGetDefaultGroup();
+            if(defaultGroupId != null){
+                op = ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+                        .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, 0)
+                        .withValue(ContactsContract.CommonDataKinds.GroupMembership.MIMETYPE,
+                                ContactsContract.CommonDataKinds.GroupMembership.CONTENT_ITEM_TYPE)
+                        .withValue(ContactsContract.CommonDataKinds.GroupMembership.GROUP_ROW_ID,
+                                defaultGroupId);
+                ops.add(op.build());
+            }
+        }catch(Exception e){
+            Log.d("Error in contact group assign:",""+e.getMessage());
+        }
+
         Context ctx = getReactApplicationContext();
         try {
             ContentResolver cr = ctx.getContentResolver();
@@ -850,6 +849,8 @@ public class ContactsManager extends ReactContextBaseJavaModule implements Activ
     @ReactMethod
     public void updateContact(ReadableMap contact, Promise promise) {
 
+        Log.d("RRHH","Updating contact");
+
         String recordID = contact.hasKey("recordID") ? contact.getString("recordID") : null;
         String rawContactId = contact.hasKey("rawContactId") ? contact.getString("rawContactId") : null;
 
@@ -857,6 +858,8 @@ public class ContactsManager extends ReactContextBaseJavaModule implements Activ
             promise.reject("Invalid recordId or rawContactId");
             return;
         }
+
+        Log.d("RRHH","Updating contact " + rawContactId + " " + recordID);
 
         String givenName = contact.hasKey("givenName") ? contact.getString("givenName") : null;
         String middleName = contact.hasKey("middleName") ? contact.getString("middleName") : null;
@@ -1003,47 +1006,6 @@ public class ContactsManager extends ReactContextBaseJavaModule implements Activ
                 .withValue(Organization.DEPARTMENT, department);
         ops.add(op.build());
 
-        try {
-            String[] GROUP_PROJECTION = new String[] { ContactsContract.Groups._ID, ContactsContract.Groups.TITLE };
-            String customGroupName = "RRHH";
-
-            String groupID = null;
-            Cursor getGroupID_Cursor = null;
-            getGroupID_Cursor = this.getContentResolver().query(ContactsContract.Groups.CONTENT_URI,  GROUP_PROJECTION, ContactsContract.Groups.TITLE+ "=?", new String[]{customGroupName}, null);
-
-            Boolean exist = false;
-            if(getGroupID_Cursor != null){
-                getGroupID_Cursor.moveToFirst();
-                groupID = (getGroupID_Cursor.getString(getGroupID_Cursor.getColumnIndex("_id")));
-                if(groupID != null){
-                    exist = true;
-                }
-            }
-
-            if(!exist){
-                ContentValues groupValues = null;
-                ContentResolver cr = this.getContentResolver();
-                groupValues = new ContentValues();
-                groupValues.put(ContactsContract.Groups.TITLE, customGroupName);
-                groupValues.put(ContactsContract.Groups.SHOULD_SYNC,true);
-                cr.insert(ContactsContract.Groups.CONTENT_URI, groupValues);
-
-                getGroupID_Cursor = this.getContentResolver().query(ContactsContract.Groups.CONTENT_URI,  GROUP_PROJECTION, ContactsContract.Groups.TITLE+ "=?", new String[]{customGroupName}, null);
-                getGroupID_Cursor.moveToFirst();
-                groupID = (getGroupID_Cursor.getString(getGroupID_Cursor.getColumnIndex("_id")));
-            }
-            
-            op = ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
-                .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, 0)
-                .withValue(ContactsContract.CommonDataKinds.GroupMembership.MIMETYPE,
-                    ContactsContract.CommonDataKinds.GroupMembership.CONTENT_ITEM_TYPE)
-                .withValue(ContactsContract.CommonDataKinds.GroupMembership.GROUP_ROW_ID, groupID);
-            ops.add(op.build());
-        }
-        catch(Exception e){
-            Log.d("Cannot assign contact to group on creation:","" +e.getMessage());
-        }
-
         op.withYieldAllowed(true);
 
 
@@ -1051,8 +1013,8 @@ public class ContactsManager extends ReactContextBaseJavaModule implements Activ
             // remove existing phoneNumbers first
             op = ContentProviderOperation.newDelete(ContactsContract.Data.CONTENT_URI)
                     .withSelection(
-                        ContactsContract.Data.MIMETYPE  + "=? AND "+ ContactsContract.Data.RAW_CONTACT_ID + " = ?",
-                        new String[]{String.valueOf(CommonDataKinds.Phone.CONTENT_ITEM_TYPE), String.valueOf(rawContactId)}
+                            ContactsContract.Data.MIMETYPE  + "=? AND "+ ContactsContract.Data.RAW_CONTACT_ID + " = ?",
+                            new String[]{String.valueOf(CommonDataKinds.Phone.CONTENT_ITEM_TYPE), String.valueOf(rawContactId)}
                     );
             ops.add(op.build());
 
@@ -1086,8 +1048,8 @@ public class ContactsManager extends ReactContextBaseJavaModule implements Activ
             // remove existing emails first
             op = ContentProviderOperation.newDelete(ContactsContract.Data.CONTENT_URI)
                     .withSelection(
-                        ContactsContract.Data.MIMETYPE  + "=? AND "+ ContactsContract.Data.RAW_CONTACT_ID + " = ?",
-                        new String[]{String.valueOf(CommonDataKinds.Email.CONTENT_ITEM_TYPE), String.valueOf(rawContactId)}
+                            ContactsContract.Data.MIMETYPE  + "=? AND "+ ContactsContract.Data.RAW_CONTACT_ID + " = ?",
+                            new String[]{String.valueOf(CommonDataKinds.Email.CONTENT_ITEM_TYPE), String.valueOf(rawContactId)}
                     );
             ops.add(op.build());
 
@@ -1133,10 +1095,10 @@ public class ContactsManager extends ReactContextBaseJavaModule implements Activ
 
         if (postalAddresses != null){
             //remove existing addresses
-             op = ContentProviderOperation.newDelete(ContactsContract.Data.CONTENT_URI)
+            op = ContentProviderOperation.newDelete(ContactsContract.Data.CONTENT_URI)
                     .withSelection(
-                        ContactsContract.Data.MIMETYPE  + "=? AND "+ ContactsContract.Data.RAW_CONTACT_ID + " = ?",
-                        new String[]{String.valueOf(CommonDataKinds.StructuredPostal.CONTENT_ITEM_TYPE), String.valueOf(rawContactId)}
+                            ContactsContract.Data.MIMETYPE  + "=? AND "+ ContactsContract.Data.RAW_CONTACT_ID + " = ?",
+                            new String[]{String.valueOf(CommonDataKinds.StructuredPostal.CONTENT_ITEM_TYPE), String.valueOf(rawContactId)}
                     );
             ops.add(op.build());
 
@@ -1177,6 +1139,21 @@ public class ContactsManager extends ReactContextBaseJavaModule implements Activ
             }
         }
 
+        try{
+            String defaultGroupId = createGetDefaultGroup();
+            if(defaultGroupId != null){
+                op = ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+                        .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, 0)
+                        .withValue(ContactsContract.CommonDataKinds.GroupMembership.MIMETYPE,
+                                ContactsContract.CommonDataKinds.GroupMembership.CONTENT_ITEM_TYPE)
+                        .withValue(ContactsContract.CommonDataKinds.GroupMembership.GROUP_ROW_ID,
+                                defaultGroupId);
+                ops.add(op.build());
+            }
+        }catch(Exception e){
+            Log.d("Error in contact group assign:",""+e.getMessage());
+        }
+
         Context ctx = getReactApplicationContext();
         try {
             ContentResolver cr = ctx.getContentResolver();
@@ -1203,16 +1180,16 @@ public class ContactsManager extends ReactContextBaseJavaModule implements Activ
         String recordID = contact.hasKey("recordID") ? contact.getString("recordID") : null;
 
         try {
-               Context ctx = getReactApplicationContext();
+            Context ctx = getReactApplicationContext();
 
-               Uri uri = Uri.withAppendedPath(ContactsContract.Contacts.CONTENT_URI,recordID);
-               ContentResolver cr = ctx.getContentResolver();
-               int deleted = cr.delete(uri,null,null);
+            Uri uri = Uri.withAppendedPath(ContactsContract.Contacts.CONTENT_URI,recordID);
+            ContentResolver cr = ctx.getContentResolver();
+            int deleted = cr.delete(uri,null,null);
 
-               if(deleted > 0)
-                 promise.resolve(recordID); // success
-               else
-                 promise.resolve(null); // something was wrong
+            if(deleted > 0)
+                promise.resolve(recordID); // success
+            else
+                promise.resolve(null); // something was wrong
 
         } catch (Exception e) {
             promise.reject(e.toString());
