@@ -705,8 +705,8 @@ public class ContactsManager extends ReactContextBaseJavaModule implements Activ
 
         op = ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
                 .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, 0)
-                .withValue(ContactsContract.Data.MIMETYPE, "vnd.android.cursor.item/customuuid")
-                .withValue("uuid", contact.hasKey("uuid") ? contact.getString("uuid") : null);
+                .withValue(ContactsContract.Data.MIMETYPE, "vnd.android.cursor.item/zarpencustomuuid")
+                .withValue(ContactsContract.DataColumns.DATA1, contact.hasKey("uuid") ? contact.getString("uuid") : null);
         ops.add(op.build());
 
         op = ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
